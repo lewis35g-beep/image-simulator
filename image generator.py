@@ -70,11 +70,67 @@ Return only valid JSON in this format:
     text = response.output_text
     return json.loads(text)
 
-def generate_image(prompt, filename):
-    result = client.images.generate(
+def generate_image_with_person(
+    prompt,
+    person_image_path,
+    filename,
+    gender="person"
+):
+    """
+    Generate a cinematic image using an uploaded reference photo and ensure
+    the same person appears consistently in every generated scene.
+
+    Parameters
+    ----------
+    prompt : str
+        The scene description or image prompt.
+    person_image_path : str or Path
+        Path to the uploaded reference image.
+    filename : str
+        Output filename for the generated image.
+    gender : str
+        "man", "woman", "him", "her", or "person".
+        This is used to make the prompt read naturally.
+    """
+
+    # Normalize gender text
+    gender = gender.lower().strip()
+
+    if gender in ["man", "male", "him"]:
+        subject = "the same man"
+        pronoun = "him"
+        possessive = "his"
+    elif gender in ["woman", "female", "her"]:
+        subject = "the same woman"
+        pronoun = "her"
+        possessive = "her"
+    else:
+        subject = "the same person"
+        pronoun = "them"
+        possessive = "their"
+
+    final_prompt = f"""
+Use the uploaded reference photo as the main character.
+
+Create a cinematic, ultra-realistic image based on this scene:
+{prompt}
+
+IMPORTANT CHARACTER CONSISTENCY RULES:
+- Include {subject} from the uploaded photo in this scene.
+- Preserve {possessive} face, hairstyle, age, body type, and overall appearance.
+- Do not replace {pronoun} with a different person.
+- Keep the same identity across all generated images.
+- Place {pronoun} naturally into the environment described in the scene.
+- Maintain photorealistic quality, cinematic lighting, and highly detailed textures.
+- The uploaded person must be the central character of the image.
+"""
+
+    result = client.images.edit(
         model="gpt-image-1",
-        prompt=prompt,
-        size="1024x1024"
+        image=open(person_image_path, "rb"),
+        prompt=final_prompt,
+        size="1024x1024",
+        input_fidelity="high"
     )
 
     image_base64 = result.data[0].b64_json
@@ -85,52 +141,3 @@ def generate_image(prompt, filename):
         f.write(image_bytes)
 
     return file_path
-
-if "scenes" not in st.session_state:
-    st.session_state.scenes = []
-
-if st.button("Create Scene Prompts"):
-    if not script.strip():
-        st.warning("Paste a script first.")
-    else:
-        with st.spinner("Breaking script into cinematic image scenes..."):
-            st.session_state.scenes = create_scene_prompts(script, num_scenes, style)
-        st.success("Scene prompts created.")
-
-if st.session_state.scenes:
-    st.subheader("Generated Scene Prompts")
-
-    for scene in st.session_state.scenes:
-        scene_num = scene["scene_number"]
-        scene_summary = scene["scene_summary"]
-        image_prompt = scene["image_prompt"]
-
-        with st.expander(f"Scene {scene_num}: {scene_summary}", expanded=True):
-            edited_prompt = st.text_area(
-                f"Prompt for Scene {scene_num}",
-                value=image_prompt,
-                height=160,
-                key=f"prompt_{scene_num}"
-            )
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                if st.button(f"Generate Image {scene_num}", key=f"generate_{scene_num}"):
-                    with st.spinner(f"Generating image for Scene {scene_num}..."):
-                        filename = f"scene_{scene_num}.png"
-                        image_path = generate_image(edited_prompt, filename)
-                        st.image(str(image_path), caption=f"Scene {scene_num}", use_container_width=True)
-                        st.success(f"Saved: {image_path}")
-
-            with col2:
-                if st.button(f"Generate More Like Scene {scene_num}", key=f"more_{scene_num}"):
-                    variation_prompt = edited_prompt + """
-Create a new version of this same scene with different camera angle, lighting, composition, and emotional intensity.
-Keep the same story moment, but make it visually fresh.
-"""
-                    with st.spinner(f"Generating another version of Scene {scene_num}..."):
-                        filename = f"scene_{scene_num}_more.png"
-                        image_path = generate_image(variation_prompt, filename)
-                        st.image(str(image_path), caption=f"More Like Scene {scene_num}", use_container_width=True)
-                        st.success(f"Saved: {image_path}")
