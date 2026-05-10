@@ -141,3 +141,115 @@ IMPORTANT CHARACTER CONSISTENCY RULES:
         f.write(image_bytes)
 
     return file_path
+
+uploaded_person = st.file_uploader(
+    "Upload a photo of the main person",
+    type=["png", "jpg", "jpeg", "webp"]
+)
+
+gender = st.selectbox(
+    "Main character",
+    ["person", "man", "woman"]
+)
+
+person_image_path = None
+
+if uploaded_person:
+    person_image_path = OUTPUT_DIR / uploaded_person.name
+
+    with open(person_image_path, "wb") as f:
+        f.write(uploaded_person.getbuffer())
+
+    st.image(str(person_image_path), caption="Main Character Reference", width=300)
+
+
+if "scenes" not in st.session_state:
+    st.session_state.scenes = []
+
+
+if st.button("Create Scene Prompts"):
+    if not script.strip():
+        st.warning("Paste a YouTube script first.")
+    else:
+        with st.spinner("Breaking script into cinematic scenes..."):
+            st.session_state.scenes = create_scene_prompts(
+                script,
+                num_scenes,
+                style
+            )
+        st.success("Scene prompts created.")
+
+
+if st.session_state.scenes:
+    st.subheader("Scene Prompts and Image Generator")
+
+    for scene in st.session_state.scenes:
+        scene_num = scene["scene_number"]
+        scene_summary = scene["scene_summary"]
+        image_prompt = scene["image_prompt"]
+
+        with st.expander(f"Scene {scene_num}: {scene_summary}", expanded=True):
+            edited_prompt = st.text_area(
+                f"Prompt for Scene {scene_num}",
+                value=image_prompt,
+                height=160,
+                key=f"prompt_{scene_num}"
+            )
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button(
+                    f"Generate Image {scene_num}",
+                    key=f"generate_{scene_num}"
+                ):
+                    if not person_image_path:
+                        st.warning("Upload a person photo first.")
+                    else:
+                        with st.spinner(f"Generating Scene {scene_num}..."):
+                            image_path = generate_image_with_person(
+                                edited_prompt,
+                                person_image_path,
+                                f"scene_{scene_num}.png",
+                                gender
+                            )
+
+                            st.image(
+                                str(image_path),
+                                caption=f"Scene {scene_num}",
+                                use_container_width=True
+                            )
+
+                            st.success(f"Saved: {image_path}")
+
+            with col2:
+                if st.button(
+                    f"Generate More Like Scene {scene_num}",
+                    key=f"more_{scene_num}"
+                ):
+                    if not person_image_path:
+                        st.warning("Upload a person photo first.")
+                    else:
+                        variation_prompt = edited_prompt + """
+
+Create another version of this same scene.
+Use the same uploaded person.
+Change the camera angle, lighting, background, and emotional intensity.
+Keep the same story moment.
+"""
+
+                        with st.spinner(f"Generating another Scene {scene_num} image..."):
+                            image_path = generate_image_with_person(
+                                variation_prompt,
+                                person_image_path,
+                                f"scene_{scene_num}_more.png",
+                                gender
+                            )
+
+                            st.image(
+                                str(image_path),
+                                caption=f"More Like Scene {scene_num}",
+                                use_container_width=True
+                            )
+
+                            st.success(f"Saved: {image_path}")
